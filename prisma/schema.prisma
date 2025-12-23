@@ -1,0 +1,257 @@
+// BIG Oakland Virtual Mail - Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  firstName     String    @map("first_name")
+  lastName      String    @map("last_name")
+  phone         String?
+  role          UserRole  @default(customer)
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLogin     DateTime? @map("last_login")
+  customer      Customer?
+  staffActions  MailItem[] @relation("ProcessedBy")
+  priceChanges  PricingHistory[]
+  sessions      Session[]
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       Int      @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("sessions")
+}
+
+enum UserRole {
+  customer
+  staff
+  admin
+}
+
+model Customer {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @unique @map("user_id")
+  planId            Int       @map("plan_id")
+  mailboxNumber     String    @unique @map("mailbox_number")
+  companyName       String?   @map("company_name")
+  billingAddress    String?   @map("billing_address")
+  shippingAddress   String?   @map("shipping_address")
+  notifyEmail       Boolean   @default(true) @map("notify_email")
+  notifySms         Boolean   @default(false) @map("notify_sms")
+  accountBalance    Decimal   @default(0) @map("account_balance") @db.Decimal(10, 2)
+  subscriptionStart DateTime  @default(now()) @map("subscription_start")
+  subscriptionEnd   DateTime? @map("subscription_end")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  user              User      @relation(fields: [userId], references: [id])
+  plan              Plan      @relation(fields: [planId], references: [id])
+  mailItems         MailItem[]
+  requests          Request[]
+  transactions      Transaction[]
+  @@map("customers")
+}
+
+model Plan {
+  id            Int       @id @default(autoincrement())
+  name          String    @unique
+  description   String?
+  monthlyPrice  Decimal   @map("monthly_price") @db.Decimal(10, 2)
+  includedItems Int       @map("included_items")
+  overageRate   Decimal   @map("overage_rate") @db.Decimal(10, 2)
+  billingCycle  String    @default("monthly") @map("billing_cycle")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  customers     Customer[]
+  @@map("plans")
+}
+
+model MailItem {
+  id              Int           @id @default(autoincrement())
+  customerId      Int           @map("customer_id")
+  mailType        MailType      @map("mail_type")
+  sender          String?
+  receivedDate    DateTime      @default(now()) @map("received_date")
+  thumbnailUrl    String?       @map("thumbnail_url")
+  status          MailStatus    @default(pending)
+  location        String?
+  notes           String?
+  processedById   Int?          @map("processed_by_id")
+  processedAt     DateTime?     @map("processed_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  processedBy     User?         @relation("ProcessedBy", fields: [processedById], references: [id])
+  requests        Request[]
+  scans           Scan[]
+  @@index([customerId])
+  @@index([status])
+  @@map("mail_items")
+}
+
+enum MailType {
+  letter
+  large_envelope
+  package
+  magazine
+  postcard
+}
+
+enum MailStatus {
+  pending
+  scanned
+  forwarded
+  shredded
+  picked_up
+  archived
+}
+
+model Request {
+  id              Int           @id @default(autoincrement())
+  customerId      Int           @map("customer_id")
+  mailItemId      Int           @map("mail_item_id")
+  requestType     RequestType   @map("request_type")
+  status          RequestStatus @default(pending)
+  priority        Priority      @default(normal)
+  shippingCarrier String?       @map("shipping_carrier")
+  shippingService String?       @map("shipping_service")
+  trackingNumber  String?       @map("tracking_number")
+  shippingAddress String?       @map("shipping_address")
+  cost            Decimal?      @db.Decimal(10, 2)
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  completedAt     DateTime?     @map("completed_at")
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  mailItem        MailItem      @relation(fields: [mailItemId], references: [id])
+  transaction     Transaction?
+  @@index([customerId])
+  @@index([status])
+  @@map("requests")
+}
+
+enum RequestType {
+  scan
+  forward
+  shred
+  pickup
+}
+
+enum RequestStatus {
+  pending
+  in_progress
+  completed
+  cancelled
+}
+
+enum Priority {
+  normal
+  express
+}
+
+model Scan {
+  id          Int       @id @default(autoincrement())
+  mailItemId  Int       @map("mail_item_id")
+  fileUrl     String    @map("file_url")
+  pageCount   Int       @map("page_count")
+  fileSize    Int?      @map("file_size")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  mailItem    MailItem  @relation(fields: [mailItemId], references: [id])
+  @@map("scans")
+}
+
+model Transaction {
+  id              Int               @id @default(autoincrement())
+  customerId      Int               @map("customer_id")
+  requestId       Int?              @unique @map("request_id")
+  transactionType TransactionType   @map("transaction_type")
+  amount          Decimal           @db.Decimal(10, 2)
+  description     String?
+  status          TransactionStatus @default(pending)
+  stripePaymentId String?           @map("stripe_payment_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  customer        Customer          @relation(fields: [customerId], references: [id])
+  request         Request?          @relation(fields: [requestId], references: [id])
+  @@index([customerId])
+  @@map("transactions")
+}
+
+enum TransactionType {
+  subscription
+  scan
+  forward
+  shred
+  pickup
+  storage
+  overage
+  payment
+  refund
+}
+
+enum TransactionStatus {
+  pending
+  completed
+  failed
+  refunded
+}
+
+model PricingRule {
+  id              Int       @id @default(autoincrement())
+  serviceType     String    @map("service_type")
+  ruleName        String    @map("rule_name")
+  basePrice       Decimal   @map("base_price") @db.Decimal(10, 2)
+  perUnitPrice    Decimal   @map("per_unit_price") @db.Decimal(10, 2)
+  unitDescription String    @map("unit_description")
+  minQuantity     Int?      @map("min_quantity")
+  maxQuantity     Int?      @map("max_quantity")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  @@map("pricing_rules")
+}
+
+model ShippingMargin {
+  id               Int       @id @default(autoincrement())
+  carrier          String
+  service          String
+  marginMultiplier Decimal   @map("margin_multiplier") @db.Decimal(5, 2)
+  handlingFee      Decimal   @map("handling_fee") @db.Decimal(10, 2)
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  @@unique([carrier, service])
+  @@map("shipping_margins")
+}
+
+model PricingHistory {
+  id          Int       @id @default(autoincrement())
+  tableName   String    @map("table_name")
+  recordId    Int       @map("record_id")
+  fieldName   String    @map("field_name")
+  oldValue    String?   @map("old_value")
+  newValue    String    @map("new_value")
+  changedById Int       @map("changed_by_id")
+  changedAt   DateTime  @default(now()) @map("changed_at")
+  changedBy   User      @relation(fields: [changedById], references: [id])
+  @@map("pricing_history")
+}
+
+model SystemSetting {
+  key         String    @id
+  value       String
+  description String?
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  @@map("system_settings")
+}
