@@ -1,0 +1,28 @@
+# Source Code Directory
+
+This directory contains the Next.js application source code for BIG Oakland's Virtual Mail system.
+
+## Directory Structure
+
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── (auth)/            # Authentication pages
+│   ├── (customer)/        # Customer portal pages
+│   ├── (mailcenter)/      # Mail center portal pages
+│   └── api/               # API routes
+├── components/            # Reusable UI components
+├── lib/                   # Utility functions
+├── hooks/                 # Custom React hooks
+├── types/                 # TypeScript types
+└── styles/                # Global styles
+```
+
+## Getting Started
+
+```bash
+npm install
+npm run dev
+```
+
+See the main README.md for full setup instructions.
